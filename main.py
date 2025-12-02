@@ -4,67 +4,36 @@ import os
 
 app = Flask(__name__)
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+DEEPSEEK_API = "https://api.deepseek.com/v1/chat/completions"
+DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY") or "YOUR_KEY_HERE"  # optional
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({
+    return {
         "engine": "LoisCloud_v2",
         "model": "deepseek/deepseek-r1:free",
         "status": "online"
-    })
+    }
 
-@app.route("/ask", methods=["POST"])
-def ask():
-    try:
-        data = request.get_json()
-        if not data or "q" not in data:
-            return jsonify({"error": "Missing 'q' field"}), 400
+@app.route("/v1/chat/completions", methods=["POST"])
+def chat():
+    data = request.json
 
-        prompt = data["q"]
+    payload = {
+        "model": "deepseek-chat",        # free model name
+        "messages": data.get("messages", []),
+        "max_tokens": data.get("max_tokens", 100),
+    }
 
-        payload = {
-            "model": "deepseek/deepseek-r1:free",
-            "messages": [
-                {"role": "system", "content": "You are Lois. Respond short, smart and clean."},
-                {"role": "user", "content": prompt}
-            ],
-            "max_tokens": 256,
-            "temperature": 0.7,
-        }
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {DEEPSEEK_KEY}"
+    }
 
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json"
-        }
+    r = requests.post(DEEPSEEK_API, json=payload, headers=headers)
 
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=40
-        )
-
-        if response.status_code != 200:
-            return jsonify({
-                "error": "OpenRouter error",
-                "status_code": response.status_code,
-                "details": response.text
-            }), response.status_code
-
-        result = response.json()
-        answer = result["choices"][0]["message"]["content"]
-
-        return jsonify({
-            "engine": "deepseek",
-            "response": answer
-        })
-
-    except Exception as e:
-        return jsonify({
-            "error": "Server exception",
-            "message": str(e)
-        }), 500
+    return jsonify(r.json())
+    
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=10000)
