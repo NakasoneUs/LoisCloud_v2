@@ -10,7 +10,7 @@ OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")  # ambil dari Environment Rende
 
 # Model default (free tier)
 DEFAULT_MODEL = "deepseek/deepseek-r1:free"
-DEFAULT_MAX_TOKENS = 256
+DEFAULT_MAX_TOKENS = 64
 
 
 # ====== HEALTH CHECK (ROOT) ======
@@ -96,3 +96,4 @@ def chat():
 if __name__ == "__main__":
     # Untuk local test je, Render pakai gunicorn
     app.run(host="0.0.0.0", port=10000)
+
