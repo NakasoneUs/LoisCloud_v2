@@ -1,17 +1,20 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+from flask_cors import CORS   # <-- untuk HTML tester / browser
 
 app = Flask(__name__)
+CORS(app)  # <-- kalau tak nak HTML tester, boleh buang baris ni
 
-DEEPSEEK_API = "https://api.deepseek.com/v1/chat/completions"
-DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY")
+OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 
 @app.route("/", methods=["GET"])
 def home():
     return {
         "engine": "LoisCloud_v2",
-        "model": "deepseek/deepseek-r1:free",
+        "provider": "OpenRouter",
+        "model": "meta-llama/llama-3.2-3b-instruct:free",
         "status": "online"
     }
 
@@ -20,17 +23,20 @@ def chat():
     data = request.json
 
     payload = {
-        "model": "deepseek-chat",
+        "model": "meta-llama/llama-3.2-3b-instruct:free",
         "messages": data.get("messages", []),
-        "max_tokens": data.get("max_tokens", 100)
+        "max_tokens": data.get("max_tokens", 200)
     }
 
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {DEEPSEEK_KEY}"
+        "Authorization": f"Bearer {OPENROUTER_KEY}",
+        # optional tapi bagus letak
+        "HTTP-Referer": "https://loiscloud-v2.onrender.com",
+        "X-Title": "LoisCloud_v2"
     }
 
-    r = requests.post(DEEPSEEK_API, json=payload, headers=headers)
+    r = requests.post(OPENROUTER_API, json=payload, headers=headers)
     return jsonify(r.json())
 
 if __name__ == "__main__":
