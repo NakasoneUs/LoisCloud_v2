@@ -1,10 +1,8 @@
 from flask import Flask, request, jsonify
 import requests
 import os
-from flask_cors import CORS   # <-- untuk HTML tester / browser
 
 app = Flask(__name__)
-CORS(app)  # <-- kalau tak nak HTML tester, boleh buang baris ni
 
 OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -30,10 +28,7 @@ def chat():
 
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENROUTER_KEY}",
-        # optional tapi bagus letak
-        "HTTP-Referer": "https://loiscloud-v2.onrender.com",
-        "X-Title": "LoisCloud_v2"
+        "Authorization": f"Bearer {OPENROUTER_KEY}"
     }
 
     r = requests.post(OPENROUTER_API, json=payload, headers=headers)
