@@ -1,15 +1,13 @@
 from flask import Flask, request, jsonify
 import requests
 import os
-from dotenv import load_dotenv  # <-- tambah ni
+from dotenv import load_dotenv
 
-load_dotenv()  # <-- dan ni, supaya .env dibaca
+load_dotenv()  # supaya .env dibaca
 
 app = Flask(__name__)
 
-# ========================
-# OPENROUTER CONFIG
-# ========================
+# ================ OPENROUTER CONFIG =================
 OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 
@@ -30,23 +28,33 @@ def chat():
     if not OPENROUTER_KEY:
         return jsonify({"error": {"message": "Missing OPENROUTER_API_KEY"}}), 400
 
-    data = request.json
+    data = request.json or {}
+
+    system_message = """Anda adalah pembantu yang hanya bercakap dalam Bahasa Melayu Malaysia (dialek Negeri Sembilan).
+Jangan gunakan Bahasa Indonesia. Nada: mesra, manja, ringkas dan jelas.
+Contoh:
+User: 'Apa khabar?'
+Assistant: 'Khabar baik, terima kasih. Apa yang boleh saya bantu hari ini?'"""
 
     payload = {
         "model": data.get("model", DEFAULT_MODEL),
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                  "Anda adalah pembantu yang hanya bercakap dalam Bahasa Melayu Malaysia (dialek Negeri Sembilan)."
-                  "Jangan gunakan Bahasa Indonesia. Nada: mesra, manja, ringkas dan jelas. "
-                  "Contoh: User: 'Apa khabar?' -> Assistant: 'Khabar baik, terima kasih. Apa yang boleh saya bantu hari ini?'"
-              )  
-            },
+            {"role": "system", "content": system_message},
             *data.get("messages", [])
         ],
         "max_tokens": data.get("max_tokens", DEFAULT_MAX_TOKENS)
     }
+
     headers = {
         "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENROUTER_KEY}"
+    }
 
+    r = requests.post(OPENROUTER_API, json=payload, headers=headers, timeout=30)
+    try:
+        return jsonify(r.json()), r.status_code
+    except ValueError:
+        return (r.text, r.status_code, {"Content-Type": "text/plain"})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
