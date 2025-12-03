@@ -47,6 +47,6 @@ def chat():
         ],
         "max_tokens": data.get("max_tokens", DEFAULT_MAX_TOKENS)
     }
-
     headers = {
         "Content-Type": "application/json",
+
