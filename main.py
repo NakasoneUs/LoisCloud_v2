@@ -2,18 +2,43 @@ from flask import Flask, request, jsonify
 import requests
 import os
 from dotenv import load_dotenv
+import time
+import json
 
-load_dotenv()  # supaya .env dibaca
+# =========================
+# LOAD ENV
+# =========================
+load_dotenv()
 
 app = Flask(__name__)
 
-# ================ OPENROUTER CONFIG =================
+# =========================
+# CONFIG
+# =========================
 OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 
-DEFAULT_MODEL = "openai/gpt-4o-mini"
-DEFAULT_MAX_TOKENS = 128
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openai/gpt-4o-mini")
+DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "128"))
+REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "25"))
 
+SYSTEM_MESSAGE = (
+    "Kau adalah LoisCloud v2. Jawab dalam Bahasa Melayu Malaysia sahaja. "
+    "Elakkan gaya Indonesia. Nada: direct, ringkas, gaya bengkel bila sesuai. "
+    "Jangan beri jawapan panjang berjela. Fokus kepada poin penting sahaja."
+)
+
+def log(tag, obj):
+    ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    try:
+        payload = json.dumps(obj, ensure_ascii=False)
+    except Exception:
+        payload = str(obj)
+    print(f"[{ts}] {tag}: {payload}", flush=True)
+
+# =========================
+# ROUTES
+# =========================
 @app.route("/", methods=["GET"])
 def home():
     return {
@@ -23,6 +48,10 @@ def home():
         "status": "online"
     }
 
+@app.route("/ping", methods=["GET"])
+def ping():
+    return {"status": "ok", "engine": "LoisCloud_v2"}, 200
+
 @app.route("/v1/chat/completions", methods=["POST"])
 def chat():
     if not OPENROUTER_KEY:
@@ -30,18 +59,18 @@ def chat():
 
     data = request.json or {}
 
-    system_message = """Anda adalah pembantu yang hanya bercakap dalam Bahasa Melayu Malaysia (dialek Negeri Sembilan).
-Jangan gunakan Bahasa Indonesia. Nada: mesra, manja, ringkas dan jelas.
-Contoh:
-User: 'Apa khabar?'
-Assistant: 'Khabar baik, terima kasih. Apa yang boleh saya bantu hari ini?'"""
+    user_messages = data.get("messages", [])
+    if not isinstance(user_messages, list):
+        return jsonify({"error": {"message": "messages must be a list"}}), 400
+
+    messages = [
+        {"role": "system", "content": SYSTEM_MESSAGE},
+        *user_messages
+    ]
 
     payload = {
         "model": data.get("model", DEFAULT_MODEL),
-        "messages": [
-            {"role": "system", "content": system_message},
-            *data.get("messages", [])
-        ],
+        "messages": messages,
         "max_tokens": data.get("max_tokens", DEFAULT_MAX_TOKENS)
     }
 
@@ -50,11 +79,42 @@ Assistant: 'Khabar baik, terima kasih. Apa yang boleh saya bantu hari ini?'"""
         "Authorization": f"Bearer {OPENROUTER_KEY}"
     }
 
-    r = requests.post(OPENROUTER_API, json=payload, headers=headers, timeout=30)
+    log("INBOUND", {"payload": payload})
+
     try:
-        return jsonify(r.json()), r.status_code
+        r = requests.post(
+            OPENROUTER_API,
+            json=payload,
+            headers=headers,
+            timeout=REQUEST_TIMEOUT
+        )
+    except requests.RequestException as e:
+        log("ERROR_UPSTREAM", {"error": str(e)})
+        return jsonify({
+            "error": {
+                "message": "Upstream request failed",
+                "detail": str(e)
+            }
+        }), 502
+
+    status = r.status_code
+    text_body = r.text
+
+    try:
+        resp_json = r.json()
     except ValueError:
-        return (r.text, r.status_code, {"Content-Type": "text/plain"})
+        resp_json = None
+
+    log("UPSTREAM_RESP", {
+        "status": status,
+        "json": resp_json if resp_json is not None else text_body[:500]
+    })
+
+    if resp_json is not None:
+        return jsonify(resp_json), status
+    else:
+        return (text_body, status, {"Content-Type": "text/plain"})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.getenv("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port)
