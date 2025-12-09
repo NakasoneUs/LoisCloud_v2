@@ -21,13 +21,24 @@ OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openai/gpt-4o-mini")
 DEFAULT_MAX_TOKENS = int(os.getenv("DEFAULT_MAX_TOKENS", "128"))
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "25"))
+DEFAULT_MODEL = os.getenv("DEFAULT_PROFILE", "MORTAR") .upper()
+SYSTEM PROFILES = {
+    "MORTAR": """
+Anda ialah LoisCloud v2 (Mortar Edition).
+Gaya: tegas tapi mesra, straight to the point, fokus pada tindakan.
+Bahasa: BM Malaysia (Negeri Sembilan). Elakan Indonesia. Gaya bengkel bila sesuai.
+""",
+    "MENTOR": """
+Anda ialah mentor peribadi. Nada profesional dan jelas.
+""",
+    "CHILL": """
+Anda ialah kawan lepak yang bijak dari segala hal. jawapan santai.
+"""
+}
+DEFAULT_SYSTEM_MESSAGE = SYSTEM_PROFILES.get(DEFAULT_PROFILE, SYSTEM_PROFILES["MORTAR"]
 
-SYSTEM_MESSAGE = (
-    "Kau adalah LoisCloud v2. Jawab dalam Bahasa Melayu Malaysia sahaja. "
-    "Elakkan gaya Indonesia. Nada: direct, ringkas, gaya bengkel bila sesuai. "
-    "Jangan beri jawapan panjang berjela. Fokus kepada poin penting sahaja."
-)
-
+SYSTEM_MESSAGE = DEFAULT_SYSTEM_MESSAGE
+  
 def log(tag, obj):
     ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     try:
@@ -55,7 +66,7 @@ def ping():
 @app.route("/v1/chat/completions", methods=["POST"])
 def chat():
     if not OPENROUTER_KEY:
-        return jsonify({"error": {"message": "Missing OPENROUTER_API_KEY"}}), 400
+        return jsonify({"error": {"message": "Missing OPENROUTER_API_KEY"}}), 500
 
     data = request.json or {}
 
@@ -69,9 +80,12 @@ def chat():
     ]
 
     payload = {
-        "model": data.get("model", DEFAULT_MODEL),
-        "messages": messages,
-        "max_tokens": data.get("max_tokens", DEFAULT_MAX_TOKENS)
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_message},
+            *messages
+        ],
+        "max_tokens": data.get("max_tokens", DEFAULT_MAX_TOKENS),
     }
 
     headers = {
@@ -79,7 +93,7 @@ def chat():
         "Authorization": f"Bearer {OPENROUTER_KEY}"
     }
 
-    log("INBOUND", {"payload": payload})
+     log("INBOUND", {"model": model, "payload": payload})
 
     try:
         r = requests.post(
@@ -92,29 +106,21 @@ def chat():
         log("ERROR_UPSTREAM", {"error": str(e)})
         return jsonify({
             "error": {
-                "message": "Upstream request failed",
+                "message": f"Upstream error: {e}"}), 502
                 "detail": str(e)
-            }
-        }), 502
-
-    status = r.status_code
-    text_body = r.text
 
     try:
-        resp_json = r.json()
+        out_json = r.json()
     except ValueError:
-        resp_json = None
+        # Kalau upstream balas text biasa
+        return (r.text, r.status_code, {"Content-Type": "text/plain"})
+ log("UPSTREAM_RESP", {"status": r.status_code, "json": out_json})
 
-    log("UPSTREAM_RESP", {
-        "status": status,
-        "json": resp_json if resp_json is not None else text_body[:500]
-    })
-
-    if resp_json is not None:
-        return jsonify(resp_json), status
+    return jsonify(out_json), r.status_code
     else:
         return (text_body, status, {"Content-Type": "text/plain"})
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5000"))
     app.run(host="0.0.0.0", port=port)
+
